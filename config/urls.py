@@ -1,9 +1,7 @@
-"""sananmuunnos URL Configuration
+"""URL Configuration"""
 
-from django.urls import path
-
-import word_transform.views
+from django.urls import include, path
 
 urlpatterns = [
-    path("/word_transform/", word_transform.views.word_transform, name="word_transform"),
+    path('word_transform/', include('word_transform.urls'))
 ]

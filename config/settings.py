@@ -27,10 +27,9 @@ BASE_DIR = Path(__file__).resolve(strict=True).parent.parent
 SECRET_KEY = 'y%5vimnao%we!)(&&c(4e(pmu5i^y!@(4k7=$bb-^w_ldq#@^%'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG') == '1'
 
 ALLOWED_HOSTS = []
-
 
 # Application definition
 

@@ -8,11 +8,11 @@ Coding exercise for KuVa DPS. See description in transform_words().
 
 Design considerations:
 
-* At the first glance, the assignment could be done with some kind of nested loop.
+* At the first glance, the assignment could have been done with some kind of nested loop.
   This would result in highly unmaintainable code.
 * A state machine is a much better fit for the problem.
 * I also considered using regular expressions, but decided against it.
-  In a one-off personal project, I might have used RE's, but the purpose of the
+  In another context, I might have used RE's, but the purpose of the
   coding exercise is to produce readable and maintainable code.
   Regular expressions would make the code shorter, but harder to maintain.
 
@@ -66,6 +66,7 @@ SPACE_CHARS = ' '
 class WordTransformException(Exception):
     pass
 
+
 class WordTransformLogicError(Exception):
     '''
     Indicates that the algorithm encountered an internal error and could not process the data.
@@ -97,6 +98,7 @@ class ParserState(Enum):
     READ_WORD_SECOND_PART = 4
     END_OF_INPUT = 5
 '''
+
 
 def get_character_type(char):
     if char is EOF:
@@ -215,8 +217,6 @@ class WordParser:
         while not self.current_state.is_end_state:
             prev_state = self.current_state
             prev_idx = self.current_char_idx
-            #if self.current_char_idx >= 11:
-            #    import pdb;pdb.set_trace()
             self.current_state, finished_token = self.current_state.process_state(self.current_char)
             if finished_token:
                 yield finished_token
@@ -233,16 +233,10 @@ class WordParser:
 
     def next_char(self):
         if self.current_char_idx >= len(self.input_string):
-            import pdb; pdb.set_trace()
             raise WordTransformLogicError('Internal error - calling next_char when already at end of input')
         self.current_char_idx += 1
         return self.current_char
-    '''
-    def peek_char(self):
-        if self.current_char_idx + 1 >= len(self.input_string):
-            return EOF
-        return self.input_string[self.current_char_idx + 1]
-    '''
+
     def consume_char(self):
         self.current_token_buffer.write(self.current_char)
         self.next_char()
@@ -276,12 +270,10 @@ def transform_words(json_string):
     '"bomama   amomo foo"'
 
     Punctuation is treated as part of words.
-    >>> transform_words('"I\'d rather die here."')
-    '"ra\'d Ither he diere."'
 
     Vowels include those in the Finnish alphabet (a, e, i, o, u, y, å, ä, ö),
 
-    >>> transform_words('"vuoirkage mäölnö")
+    >>> transform_words('"vuoirkage mäölnö"')
     '"mäörkage vuoilnö"'
 
     Any character that is not space or a vowel is treated as a consonant.
@@ -351,11 +343,7 @@ def transform_words_generator(json_string):
     for tok in pending_tokens:
         yield tok.string_value
 
+
 if __name__ == "__main__":
     import doctest
-    try:
-        doctest.testmod()
-    except Exception:
-        import pdb; pdb.post_mortem()
-        raise
-
+    doctest.testmod()

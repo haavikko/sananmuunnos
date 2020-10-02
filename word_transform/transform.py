@@ -10,6 +10,7 @@ Interpretation of the specification:
 * Leading and trailing space in the input string is preserved
 * Only the space character is interpreted as space, not other white space characters
 * An input containing zero words is also valid, and is returned as is
+* JSON formatted string is expected to be start and end with a double quote
 
 Design considerations:
 
@@ -53,7 +54,9 @@ I considered using Django StreamingHttpResponse.
 
 '''
 
-__all__ = ['transform_words']
+__all__ = ['transform_words',
+           'WordTransformException',
+           'WordTransformLogicError']
 
 VOWEL_CHARS = 'aeiouyåäö'
 SPACE_CHARS = ' '
@@ -100,7 +103,7 @@ def get_character_type(char):
     assert (isinstance(char, str) and len(char) == 1)
     if char in SPACE_CHARS:
         return CharacterType.SPACE
-    elif char in VOWEL_CHARS:
+    elif char.lower() in VOWEL_CHARS:
         return CharacterType.VOWEL
     else:
         return CharacterType.CONSONANT
@@ -112,9 +115,10 @@ Transition = collections.namedtuple('Transition', ['next_state', 'callback'])
 
 
 class ParserState:
-    def __init__(self, token_type):
+    def __init__(self, token_type, is_end_state=False):
         self.token_type = token_type
         self.transitions = {}
+        self.is_end_state = is_end_state
 
     def __str__(self):
         return f'ParserState {self.token_type}'
@@ -168,7 +172,7 @@ class WordParser:
         read_word_first_part = ParserState(TokenType.WORD_FIRST_PART)
         read_vowels = ParserState(TokenType.WORD_FIRST_PART)
         read_word_second_part = ParserState(TokenType.WORD_SECOND_PART)
-        end_of_input = ParserState(None)  # no token generated
+        end_of_input = ParserState(None, is_end_state=True)  # no token generated
 
         # Processing the initial state does not consume any characters, just select the next state
         # based on the first character in string
@@ -207,9 +211,11 @@ class WordParser:
 
         self.current_state = self.initialize_state_machine()
 
-        while self.current_char is not EOF:
+        while not self.current_state.is_end_state:
             prev_state = self.current_state
             prev_idx = self.current_char_idx
+            #if self.current_char_idx >= 11:
+            #    import pdb;pdb.set_trace()
             self.current_state, finished_token = self.current_state.process_state(self.current_char)
             if finished_token:
                 yield finished_token
@@ -241,9 +247,9 @@ class WordParser:
         self.next_char()
 
     def finish_token(self):
-        self.current_state.finished_token = Token(self.current_state.token_type,
-                                                  self.current_token_buffer.getvalue())
+        token = Token(self.current_state.token_type, self.current_token_buffer.getvalue())
         self.current_token_buffer = StringIO()  # creating new StringIO is faster than truncating
+        return token
 
 
 def transform_words(json_string):
@@ -266,7 +272,7 @@ def transform_words(json_string):
 
     Words are separated by spaces; exact spacing is preserved
     >>> transform_words('"amama   bomomo foo"')
-    "bomama   amomo foo"
+    '"bomama   amomo foo"'
 
     Punctuation is treated as part of words.
     >>> transform_words('"I\'d rather die here."')
@@ -283,7 +289,7 @@ def transform_words(json_string):
     :return: The returned value is a quoted string that pertain to JSON formatting
     '''
 
-    return json.dumps(''.join(transform_words_generator(json_string)))
+    return json.dumps(''.join(transform_words_generator(json_string)), ensure_ascii=False)
 
 
 def transform_words_generator(json_string):
@@ -298,6 +304,11 @@ def transform_words_generator(json_string):
     if not isinstance(json_string, str):
         # although json.loads allows bytes input, restrict input to str
         raise WordTransformException('Input required as str, got a {} instead'.format(type(json_string)))
+
+    if len(json_string) < 2 or json_string[0] != '"' or json_string[-1] != '"':
+        # fail-fast: if the input can't possibly be a JSON encoded string, don't even
+        # try decoding it.
+        raise WordTransformException('JSON encoded string must be surrounded by double quotes')
 
     try:
         decoded_input = json.loads(json_string)
@@ -318,21 +329,31 @@ def transform_words_generator(json_string):
           (which are always at the first and last item in buffer)
         * Repeat until end of input. If tokens remains in buffer, flush it at end. 
         '''
+        print('Got token %s', token)
         if token.token_type == TokenType.WORD_FIRST_PART:
-            pending_tokens.add(token)
+            pending_tokens.append(token)
             if len(pending_tokens) > 1:
+                # we found a matching WORD_FIRST_PART token, so swap the tokens and
+                # yield the buffered token contents
+                assert pending_tokens[0].token_type == TokenType.WORD_FIRST_PART
+                # import pdb;pdb.set_trace()
                 pending_tokens[0], pending_tokens[-1] = pending_tokens[-1], pending_tokens[0]
-            else:
                 for tok in pending_tokens:
+                    print('yieldP ' + token.string_value)
                     yield tok.string_value
                 pending_tokens = []
-        elif len(pending_tokens) == 0:
+        elif not pending_tokens:
+            # we are not buffering the output while waiting for the next word start, so
+            # yield the output immediately
+            print('yieldU ' + token.string_value)
             yield token.string_value
         else:
+            # keep in buffer while waiting for next word start
             pending_tokens.append(token)
-        # flush any remaining input, such as any odd word, space or WORD_SECOND_PART.
-        for tok in pending_tokens:
-            yield tok.string_value
+    # flush any remaining tokens, such as any odd word, space or WORD_SECOND_PART.
+    for tok in pending_tokens:
+        print('yieldx ' + token.string_value)
+        yield tok.string_value
 
 if __name__ == "__main__":
     import doctest

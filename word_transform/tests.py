@@ -24,9 +24,8 @@ class WordTransformTest(TestCase):
             ('" aa bb"', '" bb aa"'),
             ('"  aa bb"', '"  bb aa"'),
             ('"  aa bb  "', '"  bb aa  "'),
-            #('', ''),
-            #('', ''),
-            #('', ''),
+            ('"aa bb cc"', '"bb aa cc"'),
+            ('"  aa bb  cc  "', '"  bb aa  cc  "'),
         ]
         self._run_transforms(inputs_and_outputs)
 
@@ -34,26 +33,33 @@ class WordTransformTest(TestCase):
         self.assertEqual(json.dumps('bama foorbu ' * 1000), # with a trailing space
                          transform.transform_words(json.dumps('fooma barbu '*1000)))
 
+        self.assertEqual(json.dumps('bama foorbu ' * 1000 + ' abcdef'), # with a lone word at end
+                         transform.transform_words(json.dumps('fooma barbu '* 1000 + ' abcdef')))
+
     def test_long_single_word(self):
         long_word = json.dumps('abcde' * 10000)
         self.assertEqual(long_word, transform.transform_words(long_word))
 
-    def test_long_prefix(self):
-        long_prefix_1 = 'a'*10000 + 'b'
-        long_prefix_2 = 'b' * 10000 + 'a'
+    def test_long_word_prefix(self):
+        length = 10000
+        long_prefix_1 = 'b' * length + 'ab'  # prefix is bbbbbb....a
+        long_prefix_2 = 'a' * length + 'ba'  # prefix is aaaaaa....a
 
-    def test_long_suffix(self):
-        long_suffix_1 = 'a' + 'b' * 10000
-        long_suffix_2 = 'ba' * 10000 + 'b'
+        trans_1 = 'a' * length + 'b'
+        trans_2 = 'b' * length + 'aba'
 
-        inputs_and_outputs = [
-            ('"fooma barbu hello"', '"bama foorbu hello"'),
-            (' ', ' '),
-            ('', ''),
-            ('', ''),
-            ('', ''),
-        ]
-        self._run_transforms(inputs_and_outputs)
+        self.assertEqual(json.dumps(long_prefix_1 + ' ' + long_prefix_2),
+                         transform.transform_words(json.dumps(trans_1 + ' ' + trans_2)))
+
+    def test_long_word_suffix(self):
+        length = 10000
+        long_suffix_1 = 'A' + 'b' * length   # prefix is A
+        long_suffix_2 = 'Yb' + 'a' * length  # prefix is Y
+        trans_1 = 'Y' + 'b' * length
+        trans_2 = 'Ab' + 'a' * length
+
+        self.assertEqual(json.dumps(long_suffix_1 + ' ' + long_suffix_2),
+                         transform.transform_words(json.dumps(trans_1 + ' ' + trans_2)))
 
     def test_strange_inputs(self):
         inputs_and_outputs = [
@@ -61,8 +67,7 @@ class WordTransformTest(TestCase):
             ('"          "', '"          "'),
             (json.dumps('\n'), json.dumps('\n')),
             (json.dumps('\t'), json.dumps('\t')),
-            ('', ''),
-            ('', ''),
+            (json.dumps('fooma bar\nbu hello'), json.dumps('bama foor\nbu hello')),
         ]
         self._run_transforms(inputs_and_outputs)
 
@@ -87,26 +92,33 @@ class WordTransformTest(TestCase):
             self.assertEqual(expected_output, transform.transform_words(json_string))
 
 
-class TransformHttpTest(TestCase):
-    def test_get(self):
+class WordTransformHttpTest(TestCase):
+
+    def test_invalid_method(self):
         response = self.client.get('/word_transform/')
         self.assertEqual(response.status_code, 405)
 
     def test_empty_post(self):
         response = self.client.post('/word_transform/', content_type="application/json")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
 
     def test_invalid_post(self):
         response = self.client.post('/word_transform/', 'foo', content_type="application/json")
-        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.status_code, 400)
 
-        response = self.client.post('/word_transform/', 'foo', content_type="application/json")
-        self.assertEqual(response.status_code, 500)
+        response = self.client.post('/word_transform/', b'\x00', content_type="application/json")
+        self.assertEqual(response.status_code, 400)
 
-    def test_invalid_post(self):
-        response = self.client.post('/word_transform/', 'foo', content_type="application/json")
+    def test_valid_post(self):
+        response = self.client.post('/word_transform/', b'"fooma barbu"', content_type="application/json")
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['content-type'], 'application/json')
+        self.assertEqual(response.content, b'"bama foorbu"')
 
-    def test_empty_post(self):
-        response = self.client.post('/word_transform/', content_type="application/json")
+    def test_non_ascii(self):
+        response = self.client.post('/word_transform/',
+                                    '"vuoirkage mäölnö"'.encode('utf-8'),
+                                    content_type="application/json")
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, '"mäörkage vuoilnö"'.encode('utf-8'))
+

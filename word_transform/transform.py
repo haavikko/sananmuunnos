@@ -4,13 +4,7 @@ from io import StringIO
 import json
 
 '''
-Coding exercise for KuVa DPS. See description in transform_words()
-
-Interpretation of the specification:
-* Leading and trailing space in the input string is preserved
-* Only the space character is interpreted as space, not other white space characters
-* An input containing zero words is also valid, and is returned as is
-* JSON formatted string is expected to be start and end with a double quote
+Coding exercise for KuVa DPS. See description in transform_words().
 
 Design considerations:
 
@@ -52,13 +46,20 @@ I considered using Django StreamingHttpResponse.
   one or a few characters at a time as that will result in bad performance in many
   environments.
 
+Implementation notes:
+* Leading and trailing space in the input string is preserved
+* Only the space character is interpreted as space, not other white space characters
+* An input containing zero words is also valid, and is returned as is
+* JSON formatted string is expected to be start and end with a double quote, with no extra
+  characters before or after.
+
 '''
 
 __all__ = ['transform_words',
            'WordTransformException',
            'WordTransformLogicError']
 
-VOWEL_CHARS = 'aeiouyåäö'
+VOWEL_CHARS = set('aeiouyåäö')
 SPACE_CHARS = ' '
 
 
@@ -329,30 +330,25 @@ def transform_words_generator(json_string):
           (which are always at the first and last item in buffer)
         * Repeat until end of input. If tokens remains in buffer, flush it at end. 
         '''
-        print('Got token %s', token)
         if token.token_type == TokenType.WORD_FIRST_PART:
             pending_tokens.append(token)
             if len(pending_tokens) > 1:
                 # we found a matching WORD_FIRST_PART token, so swap the tokens and
                 # yield the buffered token contents
                 assert pending_tokens[0].token_type == TokenType.WORD_FIRST_PART
-                # import pdb;pdb.set_trace()
                 pending_tokens[0], pending_tokens[-1] = pending_tokens[-1], pending_tokens[0]
                 for tok in pending_tokens:
-                    print('yieldP ' + token.string_value)
                     yield tok.string_value
                 pending_tokens = []
         elif not pending_tokens:
             # we are not buffering the output while waiting for the next word start, so
             # yield the output immediately
-            print('yieldU ' + token.string_value)
             yield token.string_value
         else:
             # keep in buffer while waiting for next word start
             pending_tokens.append(token)
     # flush any remaining tokens, such as any odd word, space or WORD_SECOND_PART.
     for tok in pending_tokens:
-        print('yieldx ' + token.string_value)
         yield tok.string_value
 
 if __name__ == "__main__":
